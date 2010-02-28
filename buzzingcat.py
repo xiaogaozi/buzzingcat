@@ -27,12 +27,12 @@ from bc.api import twitter
 from bc.api import renren
 from bc.oauth import TwitterClient
 
-consumer_key = "vZiUjHaqOQ4ndNiZ2yQ"
-consumer_secret = "23SVfKMA2eETgPXZPGFnamsEuJreAsKDNinVW6s2Y"
-oauth_token = "25787139-HriI8I9xxhzG8OMP97FDybg2voocmRxYkMJ4xW14M"
-oauth_token_secret = "BCuyyqYZ467lmecjtXtt4ZFQRaBOUcgmVfoarRHIXE"
-email = "gaochangjian@gmail.com"
-password = "Fw6300f*2@i"
+consumer_key = ""
+consumer_secret = ""
+oauth_token = ""
+oauth_token_secret = ""
+email = ""
+password = ""
 
 class XMPPHandler(xmpp_handlers.CommandHandler):
     """Handles many kinds of commands via XMPP."""
