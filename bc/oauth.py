@@ -32,25 +32,35 @@ from google.appengine.api import memcache
 class OAuthClient():
     """Base OAuth"""
     def __init__(self, consumer_key, consumer_secret,
-                 callback_url="", service_name,
+                 service_name, callback_url="",
                  request_token_url="",
                  user_authorization_url="",
                  access_token_url=""):
         self.consumer_key = consumer_key
         self.consumer_secret = consumer_secret
-        self.callback_url = callback_url
         self.service_name = service_name
+        self.callback_url = callback_url
         self.request_token_url = request_token_url
         self.user_authorization_url = user_authorization_url
         self.access_token_url = access_token_url
 
-    def __generate_Signature_Base_String(self, request_method, request_url,
+    def __escape(self, s):
+        return urllib.quote(s, "~")
+
+    def __encode_utf8(self, s):
+        if isinstance(s, unicode):
+            return s.encode("utf-8")
+        else:
+            return str(s)
+
+    def __generate_Signature_Base_String(self, method, request_url,
                                          parameters):
         """Generate the Signature Base String as text of HMAC algorithm."""
-        concatenate_param = "&".join(["%s=%s" % (key, parameters[key])
+        concatenate_param = "&".join(["%s=%s" % (self.__escape(key),
+                                                 self.__escape(parameters[key]))
                                       for key in sorted(parameters)])
-        return "&".join([request_method, urllib.quote(request_url, ""),
-                         urllib.quote(concatenate_param, "")])
+        return "&".join([method, self.__escape(request_url),
+                         self.__escape(concatenate_param)])
 
     def __generate_key(self, consumer_secret, token_secret):
         """Generate the key of HMAC algorithm."""
@@ -61,26 +71,16 @@ class OAuthClient():
         if signature_method == "HMAC-SHA1":
             return hmac.new(key, text, hashlib.sha1).digest().encode("base64").strip()
 
-    def __fetch_url(self, request_url, params, headers={}):
+    def __fetch_url(self, request_url, params, method, headers):
         """Fetch URL."""
         url = "%s?%s" % (request_url, urllib.urlencode(params))
-        return urlfetch.fetch(url, headers)
 
-    def __get_response(self, request_url, params, token_secret=""):
-        """Generate the 'oauth_signature' and return response."""
-        # Generate the Signature Base String as text of HMAC algorithm.
-        text = self.__generate_Signature_Base_String("GET", request_url, params)
+        if method == "GET":
+            m = urlfetch.GET
+        elif method == "POST":
+            m = urlfetch.POST
 
-        # Generate the key of HMAC algorithm.
-        key = self.__generate_key(self.consumer_secret, token_secret)
-
-        # Generate the oauth_signature.
-        params["oauth_signature"] = self.__generate_oauth_signature(params["oauth_signature_method"],
-                                                                    key, text)
-
-        # Return response.
-        response = self.__fetch_url(request_url, params)
-        return cgi.parse_qs(response.content)
+        return urlfetch.fetch(url, method=m, headers=headers)
 
     def __add_to_cache(self):
         """Store current object in memcache for future requests.
@@ -88,6 +88,30 @@ class OAuthClient():
         The stored key is 'oauth_token', value is this OAuth object,
         and expiration time is 3600 seconds (equal to 1 hour)."""
         memcache.set(self.request_token["oauth_token"][0], self, time=3600)
+
+    def get_response(self, request_url, params, token_secret="", method="GET",
+                     headers={}):
+        """Generate the 'oauth_signature' and return response."""
+        # Encode string with UTF-8.
+        l = [(self.__encode_utf8(k), self.__encode_utf8(v)) for k, v in params.items()]
+        params.clear()
+        params.update(l)
+
+        # Generate the Signature Base String as text of HMAC algorithm.
+        text = self.__generate_Signature_Base_String(method, request_url, params)
+
+        # Generate the key of HMAC algorithm.
+        key = self.__generate_key(self.consumer_secret, token_secret)
+
+        # Generate the oauth_signature.
+        k = self.__encode_utf8("oauth_signature")
+        v = self.__encode_utf8(self.__generate_oauth_signature(params["oauth_signature_method"],
+                                                               key, text))
+        params[k] = v
+
+        # Return response.
+        response = self.__fetch_url(request_url, params, method, headers)
+        return response
 
     # --------------------------------------------------------------------------
     # Step 1: The Consumer obtains an unauthorized Request Token.
@@ -105,7 +129,8 @@ class OAuthClient():
             parameters["oauth_signature_method"] = "HMAC-SHA1"
 
         # Save this unauthorized Request Token.
-        self.request_token = self.__get_response(self.request_token_url, parameters)
+        response = self.get_response(self.request_token_url, parameters)
+        self.request_token = cgi.parse_qs(response.content)
 
     # --------------------------------------------------------------------------
     # Step 2: The User authorizes the Request Token.
@@ -144,8 +169,9 @@ class OAuthClient():
             parameters["oauth_signature_method"] = "HMAC-SHA1"
 
         # Save this Access Token.
-        self.access_token = self.__get_response(self.access_token_url, parameters,
-                                                self.request_token["oauth_token_secret"][0])
+        response = self.get_response(self.access_token_url, parameters,
+                                     token_secret=self.request_token["oauth_token_secret"][0])
+        self.access_token = cgi.parse_qs(response.content)
 
     def get_access_token(self):
         return self.access_token
@@ -154,7 +180,7 @@ class TwitterClient(OAuthClient):
     """Twitter OAuth"""
     def __init__(self, consumer_key, consumer_secret, callback_url):
         OAuthClient.__init__(self, consumer_key, consumer_secret,
-                             callback_url, "Twitter",
+                             "Twitter", callback_url,
                              "http://twitter.com/oauth/request_token",
                              "http://twitter.com/oauth/authenticate",
                              "http://twitter.com/oauth/access_token")
