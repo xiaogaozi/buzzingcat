@@ -2,4 +2,4 @@
 Buzzing Cat
 ===========
 
-Sync your Twitter and Renren status
+Sync your Twitter and Renren status via XMPP
