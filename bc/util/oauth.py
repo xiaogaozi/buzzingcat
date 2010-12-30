@@ -1,4 +1,4 @@
-# OAuth Authentication Module
+# Buzzing Cat - OAuth Authentication Module
 # Copyright (C) 2010  xiaogaozi <gaochangjian@gmail.com>
 # 
 # This program is free software: you can redistribute it and/or modify
@@ -18,6 +18,8 @@
 #   1. The Consumer obtains an unauthorized Request Token.
 #   2. The User authorizes the Request Token.
 #   3. The Consumer exchanges the Request Token for an Access Token.
+#
+# For more information about OAuth, visit http://tools.ietf.org/html/draft-hammer-oauth-10
 
 import time
 import random

@@ -14,151 +14,97 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-from google.appengine.api import memcache
+import os
+import re
+import logging
+
+from google.appengine.api import users
 from google.appengine.ext import webapp
-from google.appengine.ext.webapp import xmpp_handlers
+from google.appengine.ext.webapp import template
 from google.appengine.ext.webapp.util import run_wsgi_app
 
-import os
-from google.appengine.ext.webapp import template
-
-from bc import errorhandler
 from bc.api import twitter
 from bc.api import renren
-from bc.oauth import TwitterClient
-
-consumer_key = ""
-consumer_secret = ""
-oauth_token = ""
-oauth_token_secret = ""
-email = ""
-password = ""
-
-class XMPPHandler(xmpp_handlers.CommandHandler):
-    """Handles many kinds of commands via XMPP."""
-
-    # ---------------------------------------------
-    # Common Commands
-    # ---------------------------------------------
-
-    def help_command(self, message=None):
-        """Handles /help requests."""
-        message.reply("Welcome to use Buzzing Cat!\n\n" + message.sender)
-
-    def text_message(self, message=None):
-        """Handles plain text messages."""
-        self.t_command(message)
-        self.rr_command(message)
-
-    def unhandled_command(self, message=None):
-        """Handles unknown command."""
-        message.reply("Unknown command. Use /help for more information.")
-
-    # ---------------------------------------------
-    # Twitter Commands
-    # ---------------------------------------------
-
-    def t_command(self, message=None):
-        """Handles /t (twitter) requests."""
-        t = twitter.TwitterAPI(consumer_key, consumer_secret,
-                               oauth_token, oauth_token_secret)
-        response = t.statuses_update(message.arg)
-
-        if response.status_code == 200:
-            message.reply("Your tweet has sended.")
-        else:
-            message.reply(errorhandler.response_error(response, "Twitter"))
-
-    def tl_command(self, message=None):
-        """Handles /tl (timeline) requests."""
-        t = twitter.TwitterAPI(consumer_key, consumer_secret,
-                               oauth_token, oauth_token_secret)
-        response = t.statuses_home_timeline()
-
-        if response.status_code == 200:
-            message.reply(response.content)
-        else:
-            message.reply(errorhandler.response_error(response, "Twitter"))
-
-    # ---------------------------------------------
-    # Renren Commands
-    # ---------------------------------------------
-
-    def rr_command(self, message=None):
-        """Handles /rr (renren) requests."""
-        r = renren.RenrenAPI(email, password)
-        response = r.login()
-        if response.status_code != 302:
-            message.reply("Renren: login error.")
-            return
-
-        response = r.statuses_update(message.arg, response)
-        if response.status_code == 200:
-            message.reply("Your Renren status has updated.")
-        else:
-            message.reply(errorhandler.response_error(response, "Renren"))
-
-class Test(webapp.RequestHandler):
-    def get(self):
-        r = renren.RenrenAPI(email, password)
-        response = r.login()
-        if response.status_code != 302:
-            self.response.out.write("Renren: login error.")
-            return
-
-        response = r.statuses_update("Holy shit!", response)
-        if response.status_code == 200:
-            self.response.out.write("Your Renren status has updated.")
-        else:
-            self.response.out.write(errorhandler.response_error(response, "Renren"))
+from bc.util import datastore
+from bc.handler import xmpp
 
 class MainPage(webapp.RequestHandler):
     def get(self):
-        template_values = {}
+        user = users.get_current_user()
+        signin = False
+        t = False
+        rr = False
+        if user:
+            email = user.email()
+            if datastore.lookup_user(email) == True:
+                signin = True
+                if datastore.has_services(email, ['Twitter']) == True:
+                    t = True
+                if datastore.has_services(email, ['Renren']) == True:
+                    rr = True
+
+        template_values = {
+            'signin': signin,
+            'user': user,
+            'twitter': t,
+            'renren': rr
+        }
         path = os.path.join(os.path.dirname(__file__), 'index.html')
         self.response.out.write(template.render(path, template_values))
 
-class TwitterSignIn(webapp.RequestHandler):
-    """OAuth step 1 and step 2"""
+class SignIn(webapp.RequestHandler):
     def get(self):
-        callback_url = "http://buzzingcat.appspot.com/callback/t"
-        t = TwitterClient(consumer_key, consumer_secret, callback_url)
-        self.redirect(t.get_authorization_url())
-
-class TwitterCallback(webapp.RequestHandler):
-    """OAuth step 3, the final step."""
-    def get(self):
-        arguments = self.request.arguments()
-
-        if "denied" in arguments:
-            # User has denied the authentication.
-            self.response.out.write("Welcome to use 'Buzzing Cat' next time.")
-            return
-        elif len(arguments) == 0 or "oauth_token" not in arguments:
-            # The URL is illegal.
-            self.response.out.write("error")
-            return
-
-        oauth_token = self.request.get("oauth_token")
-        t = memcache.get(oauth_token)
-        if t is None:
-            # User hasn't signed in.
-            self.response.out.write("You should sign in first.")
-        else:
-            t.obtain_access_token()
-            if len(t.get_access_token()) == 0:
-                # The 'oauth_token' hasn't be authorized.
-                self.response.out.write("You should allow Buzzing Cat access first.")
+        user = users.get_current_user()
+        if user:
+            email = user.email()
+            if datastore.lookup_user(email) == True:
+                self.redirect('/')
             else:
-                # Yeah, it's ok.
-                self.response.out.write(t.get_access_token())
+                if re.match(r"^.*@gmail\.com$", email) is not None:
+                    datastore.add_user(email)
+                    logging.info("New User: " + email)
+                    self.redirect('/')
+                else:
+                    url = users.create_logout_url('/')
+                    path = os.path.join(os.path.dirname(__file__), 'webpages/signin.html')
+                    self.response.out.write(template.render(path, {'logout': url}))
+        else:
+            self.redirect(users.create_login_url('/signin'))
 
-application = webapp.WSGIApplication([('/_ah/xmpp/message/chat/', XMPPHandler),
-                                      ('/', MainPage),
-                                      ('/signin/t', TwitterSignIn),
-                                      ('/callback/t', TwitterCallback),
-                                      ('/test', Test)],
-                                     debug=True)
+class Admin(webapp.RequestHandler):
+    def get(self):
+        user = users.get_current_user()
+        if user:
+            if users.is_current_user_admin():
+                path = os.path.join(os.path.dirname(__file__), 'webpages/admin.html')
+                self.response.out.write(template.render(path, {}))
+            else:
+                self.redirect('/')
+        else:
+            self.redirect('/')
+
+    def post(self):
+        user = users.get_current_user()
+        if user:
+            if users.is_current_user_admin():
+                t_consumer_key = self.request.get('t_consumer_key')
+                t_consumer_secret = self.request.get('t_consumer_secret')
+                datastore.update_admin(t_consumer_key, t_consumer_secret)
+                self.redirect('/admin')
+            else:
+                self.redirect('/')
+        else:
+            self.redirect('/')
+
+application = webapp.WSGIApplication([('/', MainPage),
+                                      ('/signin', SignIn),
+                                      ('/signin/t', twitter.TwitterSignIn),
+                                      ('/signin/rr', renren.RenrenSignIn),
+                                      ('/callback/t', twitter.TwitterCallback),
+                                      ('/_ah/xmpp/message/chat/', xmpp.XMPPHandler),
+                                      ('/admin', Admin)],
+                                     debug=False)
+
 def main():
     run_wsgi_app(application)
 

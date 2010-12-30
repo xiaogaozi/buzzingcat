@@ -1,7 +1,7 @@
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
 <head>
-    <title>Buzzing Cat</title>
+    <title>Sign In - Buzzing Cat</title>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
     <link type="text/css" rel="stylesheet" href="/stylesheets/main.css" />
 </head>
@@ -21,27 +21,7 @@
     
     </script>
 
-    {% if signin %}
-        <h3>Hi, {{ user.nickname }}</h3>
-        <h4>Twitter</h4>
-        {% if twitter %}
-            <p>You have actived Twitter.</p>
-        {% else %}
-            <a href="/signin/t" title="Sign in with Twitter"><img src="/images/Sign-in-with-Twitter-darker.png" alt="Sign in with Twitter" /></a>
-        {% endif %}
-
-        <h4>Renren</h4>
-        {% if renren %}
-            <p>You have actived Renren.</p>
-        {% else %}
-            <form action="/signin/rr" method="post">
-                Username: <input type="text" name="username" />
-                <br />
-                Password: <input type="password" name="password" />
-                <br />
-                <input type="submit" value="OK" />
-            </form>
-        {% endif %}
-    {% endif %}
+    <p>You should sign in with Gmail account.</p>
+    <p><a href="{{ logout }}">Logout</a></p>
 </body>
 </html>
