@@ -14,8 +14,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import re
 import urllib
 import Cookie
+import logging
 
 from google.appengine.api import users
 from google.appengine.ext import webapp
@@ -71,8 +73,8 @@ class RenrenAPI():
 
         # If validation is successful, then request the redirection
         # URL so that gets some useful cookie information.
-        redirect_url = response.headers['location']
-        cookie = Cookie.SimpleCookie(response.headers['set-cookie'])
+        redirect_url = response.headers['Location']
+        cookie = Cookie.SimpleCookie(response.headers['Set-Cookie'])
         headers['Cookie'] = ';'.join(["%s=%s" % (c.key, c.value)
                                       for c in cookie.values()])
         response = urlfetch.fetch(redirect_url,
@@ -85,20 +87,31 @@ class RenrenAPI():
         if isinstance(status, unicode):
             status = status.encode('utf-8')
 
-        form_fields = {
-            'c': status,
-            'raw': status,
-            'publisher_form_ticket': -453288708,
-            'requestToken': -453288708
-        }
-        form_data = urllib.urlencode(form_fields)
-
         headers = {
             'Content-Type': "application/x-www-form-urlencoded"
         }
-        cookie = Cookie.SimpleCookie(response.headers['set-cookie'])
+        cookie = Cookie.SimpleCookie(response.headers['Set-Cookie'])
         headers['Cookie'] = ';'.join(["%s=%s" % (c.key, c.value)
                                       for c in cookie.values()])
+
+        # Get request token.
+        r = urlfetch.fetch("http://browse.renren.com/search.do",
+                           headers=headers,
+                           follow_redirects=False)
+        m = re.search(r"get_check:'([\-0-9]*)'", r.content)
+        token = ''
+        if m is not None:
+            token = m.group(1)
+        else:
+            return None
+
+        form_fields = {
+            'c': status,
+            'raw': status,
+            'publisher_form_ticket': token,
+            'requestToken': token
+        }
+        form_data = urllib.urlencode(form_fields)
 
         response = urlfetch.fetch(API_URL['statuses_update'],
                                   payload=form_data,

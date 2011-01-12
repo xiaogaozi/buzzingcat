@@ -115,11 +115,14 @@ class XMPPHandler(xmpp_handlers.CommandHandler):
         r = renren.RenrenAPI(username, password)
         response = r.login()
         if response.status_code != 302:
-            message.reply("Renren: login error")
+            message.reply("Error: Renren: login failed")
             return
 
         response = r.statuses_update(message.arg, response)
-        if response.status_code == 200:
-            message.reply("Your Renren status has updated.")
+        if response is None:
+            message.reply("Error: Renren: get_check not found")
         else:
-            message.reply(error.response_error(response, 'Renren'))
+            if response.status_code == 200:
+                message.reply("Your Renren status has updated.")
+            else:
+                message.reply(error.response_error(response, 'Renren'))
